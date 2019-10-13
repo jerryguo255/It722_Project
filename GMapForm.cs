@@ -26,33 +26,116 @@ namespace It722_Project
 
         private void gMapControl_Load(object sender, EventArgs e)
         {
-            //初始化===================
-            //初始化一个Google 地图  
+            
+            //initialize a Google map instance --- 
             gMapControl.MapProvider = GoogleMapProvider.Instance;
             GMaps.Instance.Mode = AccessMode.ServerOnly;
-            //设定显示中心点
+            //set the 
             gMapControl.Position = new PointLatLng(-46.403, 168.375);
-            //设定是否显示中心十字
+            //set if showing the center cross
             gMapControl.ShowCenter = false;
-            //初始化===================
+            //initialize a Google map instance --- 
 
 
 
 
-           
+
 
             var points = GetLocationData();
-            points.Sort();
+            //p.Longitude <170&& p.Longitude > 160  ]]  p.UserID == 2016000506
+           var 特定用户 = points.ToList();
+            //特定用户.Sort();
+            //points.Sort(new RadioSort(FindPivot(points)));
+         // 特定用户.Sort(new LocationSort());
+      //      var DeDuplicatedPoints =  DeDuplicate(特定用户);
+            var outputPoints = 特定用户.ToList();
             //foreach (var item in points)
             //{
-            //    notes.AppendText(item.UserID.ToString() + "\n");
+            //    notes.AppendText(item.LongitudeX.ToString() + ":" + item.LatitudeY.ToString() + "\n");
+            //}
+             var pivot = FindPivot(特定用户);
+             var sss=   ConvexHull(pivot, 特定用户);
+
+
+            //for (int i = 0; i < outputPoints.Count; i++)
+            //{
+            //    notes.AppendText(i+":"+ outputPoints[i].Longitude.ToString() + "\n");
             //}
 
-            gMapControl.Overlays.Add(PlaceMarkers(points));
+            //add markers overlay
+            gMapControl.Overlays.Add(PlaceMarkers(outputPoints));
+
+
+            //add route overlay
+            gMapControl.Overlays.Add(GenerateRoute(sss));
 
 
 
         }
+
+
+        private GMapOverlay GenerateRoute(List<PlaceOfInterest> points) {
+            List<PointLatLng> pointsss = new List<PointLatLng>();
+            foreach (var point in points)
+            {
+                pointsss.Add(new PointLatLng(point.Latitude, point.Longitude));
+            }
+            //connecting as a circle
+             pointsss.Add(new PointLatLng(points[0].Latitude, points[0].Longitude));
+            GMapOverlay routes = new GMapOverlay("routes");
+            GMapRoute route = new GMapRoute(pointsss, "A Route");
+            route.Stroke = new Pen(Color.Red, 2);
+            routes.Routes.Add(route);
+
+            return routes;
+        }
+
+
+        private List<PlaceOfInterest> DeDuplicate(List<PlaceOfInterest> points) {
+            //sort by position before!!
+
+            var point = points[0];
+
+            for (int i = 1; i < points.Count; i++)
+            {
+                if (points[i].LatitudeY == point.LatitudeY&& points[i].LongitudeX == point.LongitudeX)
+                {
+                    points.RemoveAt(i);
+                }
+                else
+                {
+                    point = points[i];
+                }
+            }
+
+            return points;
+        }
+
+
+       private PlaceOfInterest FindPivot(List<PlaceOfInterest> points)
+        {
+            PlaceOfInterest lowestLeftPoint = points[0];
+            for (int i = 1; i < points.Count; i++)
+            {
+                if (points[i].LongitudeX == lowestLeftPoint.LongitudeX)
+                {
+                    if (points[i].LatitudeY < lowestLeftPoint.LatitudeY)
+                    {
+                        lowestLeftPoint = points[i];
+                    }
+
+                }
+                else if (points[i].LongitudeX < lowestLeftPoint.LongitudeX)
+                {
+                    lowestLeftPoint = points[i];
+                }
+            }
+
+            //return _points.First(c => c.Y == _points.Max(x => x.Y));
+
+            return lowestLeftPoint;
+        }
+
 
         private List<PlaceOfInterest> GetLocationData()
         {
@@ -69,8 +152,8 @@ namespace It722_Project
                     list.Add(new PlaceOfInterest
                     {
                         UserID = int.Parse(point["userid"]),
-                        Latitude = double.Parse(point["latitude"]),
-                        Longitude = double.Parse(point["longitude"]),
+                        Latitude = Math.Round(double.Parse(point["latitude"]),8),
+                        Longitude = Math.Round(double.Parse(point["longitude"]),8),
                         Description = point["description"]
                     });
                 }
@@ -78,8 +161,42 @@ namespace It722_Project
             return list;
         }
 
+        private List<PlaceOfInterest> ConvexHull(PlaceOfInterest pivot, List<PlaceOfInterest> points)
+        {
+            List<PlaceOfInterest> Hull = new List<PlaceOfInterest>();
 
-        
+            points.Remove(pivot);
+            var s = new RadioSort(pivot);
+            points.Sort(s);
+            Hull.Add(pivot);  // first point
+            Hull.Add(points[0]); // second point
+            points.RemoveAt(0);
+            Hull.Add(points[0]);// third point
+          points.RemoveAt(0);
+            while (points.Count != 0)
+            {
+                long value = s.SignedArea(Hull[Hull.Count - 2], Hull[Hull.Count - 1], points[0]);
+                if (value < 0)
+                {
+                    Hull.Add(points[0]);
+                    points.RemoveAt(0);
+                }
+                else if (value == 0)
+                {
+                    Hull.RemoveAt(Hull.Count - 1);
+                    Hull.Add(points[0]);
+                    points.RemoveAt(0);
+                }
+                else
+                {
+                    Hull.RemoveAt(Hull.Count - 1);
+                    //Hull.Add(points[0]);
+                    // points.RemoveAt(0);
+                }
+            }
+            return Hull;
+        }
+
         private GMapOverlay PlaceMarkers(List<PlaceOfInterest> list) {
             GMapOverlay finishedOverlay = new GMapOverlay("markers");
 
@@ -89,8 +206,8 @@ namespace It722_Project
             foreach (var point in list)
             {
                 GMapMarker marker = new GMarkerGoogle(new PointLatLng(point.Latitude, point.Longitude), GMarkerGoogleType.pink_pushpin);
-                marker.ToolTipMode = MarkerTooltipMode.Always;
-                marker.ToolTipText = string.Format("UserId:{0}\nDesc:{1}", point.UserID, point.Description);
+                marker.ToolTipMode = MarkerTooltipMode.OnMouseOver;
+                marker.ToolTipText = string.Format("UserId:{0}\nDesc:{1}\n{2}:{3}", point.UserID, point.Description,point.Latitude.ToString(),point.Longitude.ToString());
           
                 marker.ToolTip.Foreground = Brushes.Black;
                 //border
